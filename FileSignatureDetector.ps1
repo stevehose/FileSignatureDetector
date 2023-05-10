@@ -7,6 +7,11 @@
 # Updated 4/25/23, Steve Hose, Microsoft
 # - Added new file types
 # - Fixed bug reading CFB files
+# Updated 5/9/23, Steve Hose, Microsoft
+# - Fixed divide by zero error in Get-TextFile
+# Updated 5/10/23, Steve Hose, Microsoft
+# - Added logging to log file
+# - Refactored to optimize code - reduced processing time by 22%
 
 function GetFileTypeFromFile{
     # Function to pull hexadecimal string to that should contain the binary file signature
@@ -15,106 +20,111 @@ function GetFileTypeFromFile{
     [CmdletBinding()]
     Param(
        [Parameter(Position=0,Mandatory=$true, ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$True)]
-       [string]$filePath
+       [string]$filePath,
+
+       [Parameter(Mandatory=$false, ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$True)]
+       [string]$logfilePath
     )
+
+    # Added logging to capture processing time
+    if($logfilePath.Length -gt 0){
+        Write-log -Level INFO -logfile $logfilePath -Message 'Started processing ' $filePath
+    }
 
     # Get the file size so that we know what we are working with
     $file = get-item -Path $filePath
     $fileSize = $file.Length # Get the size in bytes
 
-    # For each byte size, get the signature and try to figure out the file type
-    if($fileSize -gt 2){
-        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 2).HexSignature
+    if($fileSize -gt 14){
+        # Read the part of the file that contains the binary signature one time, then process
+        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 14).HexSignature
+
+        # For each byte size, get the signature and try to figure out the file type
         switch ($fileSignature.Substring(0,4))
         {
             '1F9D' {$fileType = '.tar.z'; break}
             '1FA0' {$fileType = '.tar.z'; break}
             '424D' {$fileType = '.bmp'; break}
         }
-    }
 
-    if($null -eq $fileType -and $fileSize -gt 3){
-        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 3).HexSignature
-        switch ($fileSignature.Substring(0,6))
-        {
-            'EFBBBF' {$fileType = '.txt'; break} # specific to UTF-8 with a byte order mark prefix
-        }
-    }
-
-    if($null -eq $fileType -and $fileSize -gt 4){
-        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 4).HexSignature
-        Switch ($fileSignature.Substring(0,8))
-        {
-            #'42454749' {$fileType = '.ics'; break} # ICS
-            'FFD8FFD8' {$fileType = '.jpg'; break} # JPEG
-            'FFD8FFE0' {$fileType = '.jpg'; break} # JPEG
-            'FFD8FFEE' {$fileType = '.jpg'; break} # JPEG
-            'FFD8FFE1' {$fileType = '.jpg'; break} # JPEG
-            '00000020' {$fileType = '.mp4'; break} # MP4?
-            '000001BA' {$fileType = '.mpg'; break} # MPEG
-            '000001B3' {$fileType = '.mpg'; break} # MPEG
-            '4D546864' {$fileType = '.mid'; break} # MIDI
-            '25504446' {$fileType = '.pdf'; break} # PDF
-            '38425053' {$fileType = '.psd'; break} # PSD
-            '2142444E' {$fileType = '.pst'; break} # PST
-            #'42454749' {$fileType = '.vcf'; break} # VCF/VCS
-        }
-
-        # .ics, .vcs, .vcf
-        if($null -eq $fileType -and $fileSignature.substring(0,8) -eq '42454749'){
-            $fileType = Get-CalendarFileType -filePath $filePath
-        }
-
-        # This is a compressed file, so we need to crack it open to see what it is
-        if ($null -eq $fileType){
-            if ($null -eq $fileType -and $fileSignature.substring(0,8) -eq '504B0304'){
-                # This might be an Open Office Document type. Let's check that first
-                $fileType = Get-OpenOfficeDocType -filePath $filePath
-                #Zip or Office File - expand and resubmit
-                $fileType = ExpandArchiveResubmit -filePath $filePath
-            }
-        }
-    }
-
-    if($null -eq $fileType -and $fileSize -gt 6){
-        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 6).HexSignature
-        switch ($fileSignature.Substring(0,12))
-        {
-            '474946383761' {$fileType = '.gif'; break} #GIF87a
-            '474946383961' {$fileType = '.gif'; break} #GIF89a
-            '7B5C72746631' {$fileType = '.rtf'; break} #UTF-8 explicitly encoded RTF (uncommon)
-            '377ABCAF271C' {$fileType = '.7z'; break} # 7-Zip archive
-        }
-    }
-
-    if($null -eq $fileType -and $fileSize -gt 8){
-        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 8).HexSignature
-        switch ($fileSignature.Substring(0,16))
-        {
-            '89504E470D0A1A0A' {$fileType = '.png'; break}
-        }
-
-        # These are the older Office file formats. Have to inspect the file to determine its type
-        if ($null -eq $fileType){
-            if($filesignature.Substring(0,16) -eq 'D0CF11E0A1B11AE1'){
-                #TODO: Write code to determine file type
-                #$fileType = Get-OldOfficeFileType -filePath $filePath
-                $fileType = Get-FileTypeFromCFB -filePath $filePath
-            }
-        }
-    }
-
-    if($null -eq $fileType -and $fileSize -gt 14){
-        $fileSignature = (Get-FileSignature -Path $filePath -ByteLimit 14).HexSignature
-        if ($null -eq $fileType){
-            Switch ($fileSignature.Substring(0,28))
+        if($null -eq $fileType){
+            switch ($fileSignature.Substring(0,6))
             {
-                '000100005374616E646172642041' {$fileType = '.accdb'; break}
-                '000100005374616E64617264204A' {$fileType = '.mdb'; break}
+                'EFBBBF' {$fileType = '.txt'; break} # specific to UTF-8 with a byte order mark prefix
+            }
+        }
+
+        if($null -eq $fileType){
+            Switch ($fileSignature.Substring(0,8))
+            {
+                #'42454749' {$fileType = '.ics'; break} # ICS
+                'FFD8FFD8' {$fileType = '.jpg'; break} # JPEG
+                'FFD8FFE0' {$fileType = '.jpg'; break} # JPEG
+                'FFD8FFEE' {$fileType = '.jpg'; break} # JPEG
+                'FFD8FFE1' {$fileType = '.jpg'; break} # JPEG
+                '00000020' {$fileType = '.mp4'; break} # MP4?
+                '000001BA' {$fileType = '.mpg'; break} # MPEG
+                '000001B3' {$fileType = '.mpg'; break} # MPEG
+                '4D546864' {$fileType = '.mid'; break} # MIDI
+                '25504446' {$fileType = '.pdf'; break} # PDF
+                '38425053' {$fileType = '.psd'; break} # PSD
+                '2142444E' {$fileType = '.pst'; break} # PST
+                #'42454749' {$fileType = '.vcf'; break} # VCF/VCS
+            }
+
+            # .ics, .vcs, .vcf
+            if($null -eq $fileType -and $fileSignature.substring(0,8) -eq '42454749'){
+                $fileType = Get-CalendarFileType -filePath $filePath
+            }
+
+            # This is a compressed file, so we need to crack it open to see what it is
+            if ($null -eq $fileType){
+                if ($null -eq $fileType -and $fileSignature.substring(0,8) -eq '504B0304'){
+                    # This might be an Open Office Document type. Let's check that first
+                    $fileType = Get-OpenOfficeDocType -filePath $filePath
+
+                    if($null -eq $fileType){
+                        #Zip or Office File - expand and resubmit
+                        $fileType = ExpandArchiveResubmit -filePath $filePath
+                    }
+                }
+            }
+        }
+
+        if($null -eq $fileType){
+            switch ($fileSignature.Substring(0,12))
+            {
+                '474946383761' {$fileType = '.gif'; break} #GIF87a
+                '474946383961' {$fileType = '.gif'; break} #GIF89a
+                '7B5C72746631' {$fileType = '.rtf'; break} #UTF-8 explicitly encoded RTF (uncommon)
+                '377ABCAF271C' {$fileType = '.7z'; break} # 7-Zip archive
+            }
+        }
+
+        if($null -eq $fileType){
+            switch ($fileSignature.Substring(0,16))
+            {
+                '89504E470D0A1A0A' {$fileType = '.png'; break}
+            }
+
+            # These are the older Office file formats. Have to inspect the file to determine its type
+            if ($null -eq $fileType){
+                if($filesignature.Substring(0,16) -eq 'D0CF11E0A1B11AE1'){
+                    $fileType = Get-FileTypeFromCFB -filePath $filePath
+                }
+            }
+        }
+
+        if($null -eq $fileType){
+            if ($null -eq $fileType){
+                Switch ($fileSignature.Substring(0,28))
+                {
+                    '000100005374616E646172642041' {$fileType = '.accdb'; break}
+                    '000100005374616E64617264204A' {$fileType = '.mdb'; break}
+                }
             }
         }
     }
-
     # If we made it this far, then we likely have a file that doesn't have a signature. Time to invoke parsing...
     if ($null -eq $fileType){
         $fileType = Get-FileTypeByParse -filePath $filePath
@@ -126,6 +136,11 @@ function GetFileTypeFromFile{
     }
 
     if ($null -eq $fileType){$fileType = 'Unknown'}
+
+        # Added logging to capture processing time
+        if($logfilePath.Length -gt 0){
+            Write-log -Level INFO -logfile $logfilePath -Message 'Stopped processing ' $filePath
+        }
 
     return $fileType
 }
@@ -352,92 +367,7 @@ function ExpandArchiveResubmit {
     return $fileType
 }
 
-function Get-OldOfficeFileType {
-    # Designed to open files using appropriate host to determine file type
-    # By Steve Hose, Microsoft, 4/5/2023
-    [CmdletBinding()]
-    Param(
-       [Parameter(Position=0,Mandatory=$true, ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$True)]
-       [string]$filePath
-    )
-
-    # Fire up MS Word and see if we can open the file
-    . { # Needed to suppress additional output from cmdlets to the return
-        $word = New-Object -ComObject Word.Application
-        #$word.visible = $true
-        try {
-            $doc = $word.Documents.Open($filePath)
-            #$paras = $doc.Paragraphs
-            if ($doc.SaveFormat -eq '0'){
-                $fileType = '.doc'
-            }
-            $doc.Close()
-        }
-        catch {
-            #Write-Host "Failed to open $filePath due to $err"
-        }
-        finally {
-            $word.Quit()
-            [System.Runtime.InteropServices.Marshal]::ReleaseComObject($word)
-            #$null = [System.Runtime.InteropServices.Marshal]::ReleaseComObject([System.__ComObject]$word)
-            #Remove-Variable word
-        }
-    } | Out-Null
-
-    # Fire up MS Excel and see if we can open the file
-    if ($null -eq $fileType){
-        . { # Needed to suppress additional output from cmdlets to the return
-            try {
-                $excel = New-Object -ComObject Excel.Application
-                $sheet = $excel.Workbooks.Open($filePath)
-                if ($sheet.UseWholeCellCriteria) {
-                    $fileType = '.xls'
-                }
-                $sheet.Close()
-            }
-            catch [System.Runtime.InteropServices.COMException] {
-                #Write-Host 'Cannot open this file.'
-            }
-            catch {
-                #Write-Host "Encountered an error attempting to open $filePath due to $err"
-            }
-            finally {
-                $excel.Quit()
-                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($excel)
-            }
-        } | Out-Null
-    }
-
-    # Fire up MS PowerPoint and see if we can open the file
-    if ($null -eq $fileType){
-        . { # Needed to suppress additional output from cmdlets to the return
-            try {
-                $ppt = New-Object -ComObject PowerPoint.Application
-                $presentation = $ppt.presentations.Open($filePath)
-                #if ($presentation.Slides.count -gt 0) {
-                if ($null -ne $presentation.HasHandoutMaster){
-                    [string]$fileType = '.ppt'
-                }
-                $presentation.Close()
-            }
-            catch {
-                #Write-Host "Failed to open $filePath due to $err"
-            }
-            finally {
-                $ppt.Quit()
-                [System.Runtime.InteropServices.Marshal]::ReleaseComObject($ppt)
-            }
-        } | Out-Null
-    }
-
-    # Run Outlook?
-
-    # Run Project?
-
-    # Return what we found
-    return $fileType
-}
-
+#>
 function Get-FileTypeFromCFB{
     <# .synopsis="Attempts to read the Compound Binary File (CFB) pseudo file system to determine the file type. Accomplished by getting the bytes of a file and 
     looking at the number of bytes to return and where in the byte array to start. 
@@ -467,10 +397,6 @@ function Get-FileTypeFromCFB{
     }
 
     # Read first directory sector index at offset 48 in the header
-    <# The following blocked worked for Test.doc, but just by dumb luck. I'm keeping the code until I get a new working version.
-    $rootDirIndexHex = Get-BytesFromFilestream -filePath $filePath -bytesToRead 1 -ByteOffset 48
-    $rootDirIndex = [Uint32]"0x$rootDirIndexHex"
-    #>
     $rootDirIndexHex = Get-BytesFromFilestream -filePath $filePath -bytesToRead 4 -ByteOffset 48
     # $rootDirIndexHex is little-endian so it needs to be reversed
     $rootDirIndexHex = Convert-LittleEndianBytesToBigEndianBytes -bigBytes $rootDirIndexHex
@@ -666,34 +592,34 @@ function Get-CalendarFileType{
 }
 
 function Get-OpenOfficeDocType{
-    # Designed to read Open Office docuemnt files and parse the contents to determine file type
+    # Designed to read Open Office document files and parse the contents to determine file type
     # By Steve Hose, Microsoft, 4/17/2023
     # Updated, 4/17/2023, Steve Hose, Microsoft
-    
-        [CmdletBinding()]
-        Param(
-        [Parameter(Position=0,Mandatory=$true, ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$True)]
-        [string]$filePath
-        )
-    
-        # Read the file
-        $fileContents = Get-Content -Path $filePath
-    
-        # Test for Open Office Document file formats
-        if($null -eq $fileType){
-            if($fileContents -like  "*mimetypeapplication/vnd.oasis.opendocument.presentationPK*"){$fileType = '.odp'}
-            if($fileContents -like  "*mimetypeapplication/vnd.oasis.opendocument.spreadsheetPK*"){$fileType = '.ods'}
-            if($fileContents -like  "*mimetypeapplication/vnd.oasis.opendocument.textPK*"){$fileType = '.odt'}
-        }
-    
-        return $fileType
+
+    [CmdletBinding()]
+    Param(
+    [Parameter(Position=0,Mandatory=$true, ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$True)]
+    [string]$filePath
+    )
+
+    # Read the file
+    $fileContents = Get-Content -Path $filePath
+
+    # Test for Open Office Document file formats
+    if($null -eq $fileType){
+        if($fileContents -like  "*mimetypeapplication/vnd.oasis.opendocument.presentationPK*"){$fileType = '.odp'}
+        if($fileContents -like  "*mimetypeapplication/vnd.oasis.opendocument.spreadsheetPK*"){$fileType = '.ods'}
+        if($fileContents -like  "*mimetypeapplication/vnd.oasis.opendocument.textPK*"){$fileType = '.odt'}
     }
+
+    return $fileType
+}
 
 function Get-TextFile {
     # Designed to read Open Office document files and parse the contents to determine file type
     # By Steve Hose, Microsoft, 4/17/2023
     # Updated, 4/17/2023, Steve Hose, Microsoft
-    
+
     [CmdletBinding()]
     Param(
     [Parameter(Position=0,Mandatory=$true, ValueFromPipelineByPropertyName=$true,ValueFromPipeline=$True)]
@@ -712,12 +638,12 @@ function Get-TextFile {
     foreach ($line in $fileContents) {
         # Count how many lines we've read. We should know pretty quickly if we have something other than a text file.
         $currentLine = $currentLine + 1
-        if ($currentLine -eq 20) {break} # Currently breaking out of reading the file at 30 lines
+        if ($currentLine -eq 20) {break} # Currently breaking out of reading the file at 20 lines
 
         # Process the current line
         $len = $line.Length
         $chars = $chars + $len
-        for ($i = 1; $i -lt $len; $i++) {
+        for ($i = 0; $i -lt $len-1; $i++) {
             $isCommonChar = $false
             $isCommonChar = IsCommonCharacter -character $line.Substring($i,1) -ErrorAction SilentlyContinue
             if($isCommonChar){$score = $score + 1} # up the score if the character is printable ASCII
@@ -746,18 +672,72 @@ function IsCommonCharacter {
     if ($ascii -eq 10) {$test = $true} #lf
     if ($ascii -eq 13) {$test = $true} #cr
     if ($ascii -ge 32 -and $ascii -le 126) {$test = $true} # In the range of printable characters
-    <#
-    if ($ascii -ge 32 -and $ascii -le 47) {$test = $true} #common punctuation
-    if ($ascii -ge 48 -and $ascii -le 57) {$test = $true} #digits
-    if ($ascii -ge 58 -and $ascii -le 64) {$test = $true} #common punctuation
-    if ($ascii -ge 65 -and $ascii -le 90) {$test = $true} #capital letters
-    if ($ascii -ge 91 -and $ascii -le 96) {$test = $true} #common punctuation
-    if ($ascii -ge 97 -and $ascii -le 122) {$test = $true} #lowercase letters
-    if ($ascii -ge 123 -and $ascii -le 126) {$test = $true} #common punctuation
-    #>
+
     return $test
 }
-    #endregion Helper Functions
+
+function GenerateFilename{
+    # This function encapsulates the business rules used to create file names from processing properties
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$True)]
+        [String]$fileName,
+
+        [Parameter(Mandatory=$True)]
+        [string]$actualExtension,
+
+        [Parameter(Mandatory=$True)]
+        [string]$detectedExtension
+    )
+
+    if ($actualExtension -eq $detectedExtension){
+        $useExtention = $actualExtension
+    } else {
+        switch ($detectedExtension){
+            'txt' { # Could be any of several possible actual file types
+                $useExtention = $actualExtension
+            }
+            'Unknown' {
+                $useExtention = $actualExtension
+            }
+            default {
+                $useExtention = $detectedExtension
+            }
+        }
+    }
+
+    $generatedFilename = $fileName + '.' + $useExtention
+    return $generatedFilename
+}
+Function Write-Log {
+    [CmdletBinding()]
+    Param(
+        [Parameter(Mandatory=$True)]
+        [ValidateSet("INFO","WARN","ERROR","FATAL","DEBUG")]
+        [String]$Level,
+
+        [Parameter(Mandatory=$False)]
+        [string]$Id,
+
+        [Parameter(Mandatory=$True)]
+        [string]$Message,
+
+        [Parameter(Mandatory=$False)]
+        [string]$logfile
+    )
+
+    #$Stamp = (Get-Date).toString("yyyy/MM/dd HH:mm:ss")
+    $Stamp = get-date -format FileDateTime
+    $Line = "$Stamp`t$Id`t$Level`t$Message"
+    If($logfile) {
+        Add-Content $logfile -Value $Line
+    }
+    Else {
+        Write-Output $Line
+    }
+}
+
+#endregion Helper Functions
 
 #region Examples
 
@@ -767,17 +747,21 @@ $filePath = "C:\Dev\File Signature Detector\Samples\Test.pst"
 $out = GetFileTypeFromFile -filePath $filePath
 write-host "ChangedFileName$out"
 #>
-GetFileTypeFromFile -filePath "C:\Dev\File Signature Detector\Samples\Test.pst"
-
 <#
+GetFileTypeFromFile -filePath "C:\Dev\File Signature Detector\Samples\Test.pst"
+#>
+
 #Process a folder of files
 #$filesToProcess = Get-ChildItem -path ".\Samples" | Select-Object FullName
 #$filesToProcess = Get-ChildItem -path ".\Text Samples" | Select-Object FullName
 #$filesToProcess = Get-ChildItem -path "F:\zArchive\iNAVSEA" | Select-Object FullName
+
+<#
 $filesToProcess = Get-ChildItem -path ".\Samples" | Select-Object FullName
 foreach ($filePath in $filesToProcess) {
-    $out = GetFileTypeFromFile -filePath $filePath.FullName
+    $out = GetFileTypeFromFile -filePath $filePath.FullName -logfilePath ".\GetFileType202510-1115.log"
     Write-Host $filePath.FullName, $out
 }
 #>
+
 #endregion Examples
