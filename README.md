@@ -73,6 +73,12 @@ The script is easy to use in that the only thing needed is to call the function.
 GetFileTypeFromFile -filePath "C:\Temp\Samples\Test.doc"
 ```
 
+The function supports optional logging to a log file. Pass in the log file full name as a parameter as follows:
+
+```
+GetFileTypeFromFile -filePath "C:\Temp\Samples\Test.doc" -logfilePath "C:\temp\Samples\FileTypeDetector.log"
+```
+
 Additionally, the function supports cmdlet binding and can be called in a nested script:
 
 ```
