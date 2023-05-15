@@ -12,6 +12,10 @@
 # Updated 5/10/23, Steve Hose, Microsoft
 # - Added logging to log file
 # - Refactored to optimize code - reduced processing time by 22%
+# Updated 5/11/23, Rahul Potluri, Microsoft
+# - Fixed overflow bug in IsCommonCharacter
+# Updated 5/15/23, Steve Hose, Microsoft
+# - Added processing for .eml file format
 
 function GetFileTypeFromFile{
     # Function to pull hexadecimal string to that should contain the binary file signature
@@ -545,6 +549,18 @@ function Get-FileTypeByParse{
         }
     }
 
+    # Test for EML
+    if($null -eq $fileType){
+        if($fileContents -like "*From: *"){$score = 25}
+        if($fileContents -like "*To:*"){$score = $score + 25}
+        if($fileContents -like "*Subject: *"){$score = $score + 25}
+        if($fileContents -like "*Date: *"){$score = $score + 25}
+        if($fileContents -like "*Content-Type: *"){$score = $score + 25}
+        if($score -ge 75){
+            $fileType = ".eml"
+        }
+    }
+
     return $fileType
 }
 
@@ -651,7 +667,7 @@ function Get-TextFile {
     }
     # We have the score, let's determine the results. If a high percentage of the characters are common ASCII
     # printable characters, it is very likely a text file.
-    if($score/$chars -gt .9){ # Currently using 90% printable as the threshold
+    if($chars -gt 0 -and $score/$chars -gt .9){ # Currently using 90% printable as the threshold
         return '.txt'
     }
 }
@@ -663,9 +679,15 @@ function IsCommonCharacter {
         [string]$character
     )
 
-    # Convert the character to decimal
-    $ascii = [BYTE][CHAR]$character
     $test = $false
+
+    # Convert the character to decimal
+    try {
+        $ascii = [BYTE][CHAR]$character
+    }
+    catch {
+        return $false
+    }
 
     # Test to see if the character is in the common set of ASCII characters that are printable
     if ($ascii -eq 9) {$test = $true} #tab
@@ -748,7 +770,7 @@ $out = GetFileTypeFromFile -filePath $filePath
 write-host "ChangedFileName$out"
 #>
 <#
-GetFileTypeFromFile -filePath "C:\Dev\File Signature Detector\Samples\Test.pst"
+GetFileTypeFromFile -filePath "C:\Dev\File Signature Detector\Samples\Test.eml"
 #>
 
 #Process a folder of files
@@ -759,7 +781,7 @@ GetFileTypeFromFile -filePath "C:\Dev\File Signature Detector\Samples\Test.pst"
 <#
 $filesToProcess = Get-ChildItem -path ".\Samples" | Select-Object FullName
 foreach ($filePath in $filesToProcess) {
-    $out = GetFileTypeFromFile -filePath $filePath.FullName -logfilePath ".\GetFileType202510-1115.log"
+    $out = GetFileTypeFromFile -filePath $filePath.FullName -logfilePath ".\GetFileType20250515-1439.log"
     Write-Host $filePath.FullName, $out
 }
 #>
