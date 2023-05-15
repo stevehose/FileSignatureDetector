@@ -14,6 +14,7 @@ The script currently can reasonably accurately detect the following file types:
 |.docx|MS Word|
 |.dot|Word template before 2007|
 |.dotx|Word template|
+|.eml|RFC-822 formatted email|
 |.gif|Graphic Interchange Format|
 |.htm/html|HTML|
 |.ics|Calendar file|
