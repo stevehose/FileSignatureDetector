@@ -16,6 +16,8 @@
 # - Fixed overflow bug in IsCommonCharacter
 # Updated 5/15/23, Steve Hose, Microsoft
 # - Added processing for .eml file format
+# Updated 6/26/23, Steve Hose, Microsoft
+# - Added support for zip files that contain no folders to iterate.
 
 function GetFileTypeFromFile{
     # Function to pull hexadecimal string to that should contain the binary file signature
@@ -350,7 +352,7 @@ function ExpandArchiveResubmit {
     # Crack open the archive, retaining the attributes
     $inFile = Get-Item $filePath
     $path = $inFile.DirectoryName + '\' + $infile.Name + '.out'
-    Expand-Archive -Path $filePath -DestinationPath $path -Force
+    Expand-Archive -Path $filePath -DestinationPath $path -Force -ErrorAction SilentlyContinue
 
     # We have an expanded archive, let's see what is inside of it
     Get-ChildItem -path $path | ForEach-Object{
