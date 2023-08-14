@@ -38,7 +38,14 @@ function GetFileTypeFromFile{
     }
 
     # Get the file size so that we know what we are working with
-    $file = get-item -Path $filePath
+    try {
+        $file = get-item -Path $filePath
+    }
+    catch {
+        # raise an error if the file doesn't exist
+        Write-Error -Message "File $filePath does not exist"
+        return
+    }
     $fileSize = $file.Length # Get the size in bytes
 
     if($fileSize -gt 14){
