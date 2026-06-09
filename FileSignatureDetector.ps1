@@ -953,9 +953,6 @@ function GenerateFilename{
 $logfile = $MFCconfig.zDrivePath + 'Migration\Logs\shoseFileSignatureDetectorLog.log'
 #$filePath = "C:\Dev\File Signature Detector\Samples2\SQL Server FineBuild Reference Revision 1.doc"
 #$filePath = "C:\Dev\File Signature Detector\Samples\Test.pst"
-#$filePath = '\\?\Z:\dt-export\prod\app5\Records Export 2000-046 CAPSTONE-Unclassified and Classified Email (NIPRnet_SIPRnet) records of Capstone Officials assigned to the Chief of Naval Operations (CNO, OPNAV) 2018-10-01 2018-10-15\2000-046 CAPSTONE-Unclassified and Classified Email (NIPRnet_SIPRnet) records of Capstone Officials assigned to the Chief of Naval Operations (CNO, OPNAV) 2018-10-01 2018-10-15 batch 123\content\content7.bin'
-$filePath = '\\?\Z:\dt-export\prod\app5\Records Export 2000-046 CAPSTONE-Unclassified and Classified Email (NIPRnet_SIPRnet) records of Capstone Officials assigned to the Chief of Naval Operations (CNO, OPNAV) 2018-07-01 2018-08-01\2000-046 CAPSTONE-Unclassified and Classified Email (NIPRnet_SIPRnet) records of Capstone Officials assigned to the Chief of Naval Operations (CNO, OPNAV) 2018-07-01 2018-08-01 batch 53\content\content734.docx'
-#$filePath = $MFCconfig.zDrivePath + 'test\content7.bin'
 $out = GetFileTypeFromFile -filePath $filePath -logFile $logfile
 write-host $out
 #>
