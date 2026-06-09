@@ -3,6 +3,8 @@ PowerShell File Signature Detector
 
 This scripts solves a problem that I encountered while working with files that were either without file extensions or files that were renamed with the wrong extensions. I needed a clean solution for determining the actual file type based upon reading the file directly. Thus, this script was written to read file signatures as well as parse for some common file types.
 
+This code is based off of code from Get-FileSignature which was published at https://mcpmag.com/articles/2018/07/25/file-signatures-using-powershell.aspx.
+
 ## Detected File Types
 The script currently can reasonably accurately detect the following file types:
 
