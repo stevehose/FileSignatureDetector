@@ -6,7 +6,7 @@ This scripts solves a problem that I encountered while working with files that w
 This code is based off of code from Get-FileSignature which was published at https://mcpmag.com/articles/2018/07/25/file-signatures-using-powershell.aspx.
 
 ## Detected File Types
-The script currently can reasonably accurately detect the following file types:
+The script currently can reasonably accurately detect the following file types (Pulled from http://en.wikipedia.org/wiki/list_of_file_signatures):
 
 |Type|Notes|
 |-------|-------------------------|
